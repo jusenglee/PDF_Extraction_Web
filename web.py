@@ -9,7 +9,7 @@ from pdf2image import convert_from_path
 import cv2
 import numpy as np
 import glob
-app = Flask(__name__, template_folder="templates", static_folder="static")
+app = Flask(__name__)
 
 LOCAL_CONFIG_PATH = "./config.yml"
 LOCAL_PTH_PATH = "./model_final.pth"
@@ -72,7 +72,7 @@ def process_pdf_with_layoutparser(pdf_path, dpi=200):
     return extracted_images
 @app.route('/')
 def index():
-    return render_template('mainWeb.html')
+    return render_template('./mainWeb.html')
 
 
 @app.route('/download/<filename>')
