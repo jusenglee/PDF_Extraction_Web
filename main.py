@@ -9,12 +9,15 @@ from pdf2image import convert_from_path
 import cv2
 import numpy as np
 import glob
-app = Flask(__name__)
+app = Flask(__name__, template_folder="templates", static_folder="static")
 
-
-model = lp.Detectron2LayoutModel('lp://PubLayNet/faster_rcnn_R_50_FPN_3x/config',
-                                 extra_config=["MODEL.ROI_HEADS.SCORE_THRESH_TEST", 0.8],
-                                 label_map={0: "Text", 1: "Title", 2: "List", 3:"Table", 4:"Figure"})
+LOCAL_CONFIG_PATH = "./config.yml"
+LOCAL_PTH_PATH = "./model_final.pth"
+model = lp.Detectron2LayoutModel(
+    config_path=LOCAL_CONFIG_PATH,
+    label_map={0: "text", 1: "title", 2: "list", 3: "table", 4: "figure"},
+    extra_config=["MODEL.WEIGHTS", LOCAL_PTH_PATH]
+)
 
 
 def process_pdf_with_layoutparser(pdf_path, dpi=200):
@@ -69,7 +72,7 @@ def process_pdf_with_layoutparser(pdf_path, dpi=200):
     return extracted_images
 @app.route('/')
 def index():
-    return render_template('./mainWeb.html')
+    return render_template('mainWeb.html')
 
 
 @app.route('/download/<filename>')
