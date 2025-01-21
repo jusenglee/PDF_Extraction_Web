@@ -53,8 +53,8 @@ try:
         extra_config=[
             "MODEL.WEIGHTS", MODEL_PATH,
             "MODEL.DEVICE", "cuda",
-             "MODEL.ROI_HEADS.SCORE_THRESH_TEST", "0.8",  # 점수 기준
-             "MODEL.ROI_HEADS.NMS_THRESH_TEST", "0.5"    # NMS 임계값
+             "MODEL.ROI_HEADS.SCORE_THRESH_TEST", "0.7",  # 점수 기준
+             "MODEL.ROI_HEADS.NMS_THRESH_TEST", "0.2"    # NMS 임계값
         ]
     )
     logger.info("LayoutParser 모델 로드 완료.")
@@ -124,15 +124,15 @@ def process_pdf(pdf_path: str, dpi: int = 250) -> List[Dict[str, Any]]:
                 mask_binary = np.zeros_like(mask_aggregate)
                 mask_binary[y1:y2, x1:x2] = 1
 
-                # overlap = cv2.bitwise_and(mask_binary, mask_aggregate)
-                # overlap_ratio = 0.0
-                # if np.sum(mask_binary) > 0:
-                #     overlap_ratio = np.sum(overlap) / np.sum(mask_binary)
-                #
-                # # 중복이 50% 이상이면 스킵
-                # if overlap_ratio > 0.5:
-                #     logger.debug("[process_pdf] 중복된 영역 발견, 건너뜀.")
-                #     continue
+                overlap = cv2.bitwise_and(mask_binary, mask_aggregate)
+                overlap_ratio = 0.0
+                if np.sum(mask_binary) > 0:
+                    overlap_ratio = np.sum(overlap) / np.sum(mask_binary)
+
+                # 중복이 50% 이상이면 스킵
+                if overlap_ratio > 0.6:
+                    logger.debug("[process_pdf] 중복된 영역 발견, 건너뜀.")
+                    continue
 
                 # 캡션 추출
                 caption = extract_caption_bottom_priority(block.block, text_blocks, bgr_img)
