@@ -20,12 +20,14 @@ $(document).ready(function () {
                 $('#imageContainer').empty();
                 // Display extracted images
                 response.images.forEach(function (image) {
-                    const filename = image.split('/').pop();
+                    const filename = image.url.split('/').pop();
+                    const caption = image.caption
                     $('#imageContainer').append(`
                         <div class="col-md-4">
                             <div class="card">
-                                <img src="${image}" class="card-img-top" alt="${filename}">
+                                <img src="${image.url}" class="card-img-top" alt="${filename}">
                                 <div class="card-body text-center">
+                                    <p>${caption}</p>
                                     <a href="/download/${filename}" class="btn btn-success">Download</a>
                                 </div>
                             </div>
