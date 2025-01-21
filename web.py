@@ -1,6 +1,8 @@
+import gc
 import re
 import zipfile
 
+import easyocr
 from flask import Flask, request, send_file, render_template, jsonify, url_for, send_from_directory
 import os
 from io import BytesIO
@@ -8,7 +10,8 @@ import layoutparser as lp
 from pdf2image import convert_from_path
 import cv2
 import numpy as np
-import glob
+import pytesseract
+
 app = Flask(__name__)
 
 LOCAL_CONFIG_PATH = "./config.yml"
@@ -16,60 +19,64 @@ LOCAL_PTH_PATH = "./model_final.pth"
 model = lp.Detectron2LayoutModel(
     config_path=LOCAL_CONFIG_PATH,
     label_map={0: "text", 1: "title", 2: "list", 3: "table", 4: "figure"},
-    extra_config=["MODEL.WEIGHTS", LOCAL_PTH_PATH]
+    extra_config=["MODEL.WEIGHTS", LOCAL_PTH_PATH, "MODEL.DEVICE", "cuda"]
 )
+reader = easyocr.Reader(['en', 'ko'])
 
 
-def process_pdf_with_layoutparser(pdf_path, dpi=200):
+
+def process_pdf_with_layoutparser(pdf_path, dpi=300):
     extracted_images = []
-    # PDF를 이미지로 변환
     images = convert_from_path(pdf_path, dpi=dpi)
     for page_number, image in enumerate(images):
         print(f"Processing page {page_number + 1}...")
-
-        # detect
         layout = model.detect(image)
-        filtered_blocks = [l for l in layout if l.type in ["table", "figure"]]
+        filtered_blocks = [l for l in layout if l.type in ["table", "figure"] and l.score > 0.80]
 
         image_np = np.array(image)
-        rgb_img = cv2.cvtColor(image_np, cv2.COLOR_BGR2RGB)
+        rgb_img = image_np
 
-        # 중복 마스크 방지를 위한 전체 마스크 누적
-        mask_aggregate = np.zeros((rgb_img.shape[0], rgb_img.shape[1]), dtype=np.uint8)
+        mask_aggregate = np.zeros((rgb_img.shape[0], rgb_img.shape[1]), dtype=np.uint8)  # 페이지 단위로 초기화
 
-        for idx, l_obj in enumerate(filtered_blocks):
-            x1, y1, x2, y2 = int(l_obj.block.x_1), int(l_obj.block.y_1), int(l_obj.block.x_2), int(l_obj.block.y_2)
-            label = l_obj.type
+        for l_obj in filtered_blocks:
+            x1, y1, x2, y2 = map(int, [l_obj.block.x_1, l_obj.block.y_1, l_obj.block.x_2, l_obj.block.y_2])
+            segment_rgb = rgb_img[y1:y2, x1:x2]
 
-            # 바운딩 박스를 이용하여 마스크 생성
-            # 현재 단계에서는 바운딩 박스 내 전체 영역을 마스크로 사용
             mask_binary = np.zeros((rgb_img.shape[0], rgb_img.shape[1]), dtype=np.uint8)
             mask_binary[y1:y2, x1:x2] = 1
 
-            # 중복된 마스크 검출
             overlap = cv2.bitwise_and(mask_binary, mask_aggregate)
             overlap_ratio = np.sum(overlap) / np.sum(mask_binary) if np.sum(mask_binary) > 0 else 0
 
-            if overlap_ratio > 0.1:  # 중복 허용 비율 조정 가능
-                print(f"[INFO] 중복된 마스크가 발견되었습니다: {idx}, overlap_ratio={overlap_ratio:.2f}")
+            if overlap_ratio > 0.1:
                 continue
 
-            # 마스크 누적
             mask_aggregate = cv2.bitwise_or(mask_aggregate, mask_binary)
-            segment_rgb = rgb_img[y1:y2, x1:x2]
             mask_cropped = mask_binary[y1:y2, x1:x2]
 
-            # 마스크 품질 향상을 위한 모폴로지 연산
             kernel = np.ones((3, 3), np.uint8)
             mask_cropped = cv2.morphologyEx(mask_cropped, cv2.MORPH_OPEN, kernel, iterations=1)
             mask_cropped = cv2.morphologyEx(mask_cropped, cv2.MORPH_DILATE, kernel, iterations=1)
 
-            # 마스크를 RGBA 알파 채널로 추가
-            segment_rgba = cv2.cvtColor(segment_rgb, cv2.COLOR_RGB2RGBA)
+            segment_rgba = cv2.cvtColor(segment_rgb, cv2.COLOR_BGR2BGRA)
             segment_rgba[:, :, 3] = (mask_cropped * 255).astype(np.uint8)
             extracted_images.append(segment_rgba)
 
+        # 메모리 해제
+        del image_np, rgb_img
+        gc.collect()
+
     return extracted_images
+
+
+
+def extract_text_from_image(segment_rgb):
+    gray_image = cv2.cvtColor(segment_rgb, cv2.COLOR_RGB2GRAY)
+    text = reader.readtext(gray_image, detail=0, paragraph=True)
+    print(text)
+    return ' '.join(text)
+
+
 @app.route('/')
 def index():
     return render_template('./mainWeb.html')
