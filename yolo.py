@@ -33,6 +33,7 @@ filepath = hf_hub_download(
 )
 model = YOLOv10(filepath)
 
+
 def ocr_text_from_crop(image_rgb: np.ndarray) -> str:
     """
     Tesseract를 이용해 RGB 이미지 영역에서 텍스트를 추출.
@@ -187,7 +188,6 @@ def process_pdf(imgPath):
             line_width=3,  # 바운딩박스 선 두께
             font_size=120  # 라벨 폰트 크기
         )
-        print("annotated_frame   :   ", annotated_frame)
         image_np = np.array(annotated_frame)
         image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
 
@@ -232,7 +232,7 @@ def process_pdf(imgPath):
                 caption_img = crop_region(orig_np, best_box)
                 caption_text = ocr_text_from_crop(caption_img)
                 print(f"매칭된 figure 캡션: {caption_text} (pos={pos})")
-                # 사전에 저장 (caption -> figure image)8
+                # 사전에 저장 (caption -> figure image)
                 caption_image_dict[caption_text] = fig_crop
             else:
                 print("테이블 캡션 미발견")
@@ -272,8 +272,9 @@ def download_from_memory(filename):
     if filename not in memory_store:
         abort(404, description="해당 ID에 해당하는 파일이 없습니다.")
 
-    memfile = memory_store[filename]
-    memfile.seek(0)  # 혹시 모를 위치 초기화
+    img_bytes = memory_store[filename]
+    memfile = BytesIO(img_bytes)
+    memfile.seek(0)
 
     # send_file 사용:
     return send_file(
@@ -286,30 +287,26 @@ def download_from_memory(filename):
 
 @app.route('/download-zip/<filename>')
 def download_zip(filename: str):
-    """
-    모든 이미지를 ZIP 파일로 다운로드하는 엔드포인트.
-    filename은 실제 PDF 파일 이름 등과 연결되어
-    <base_name>_n.png 형태로 저장된 이미지를 ZIP으로 묶습니다.
-    """
     try:
+        # filename이 예: 'N0890120404_IMG_...' 라면, base_name='N0890120404' 추출
         base_name = filename.split('_')[0]
         logger.info(f"[download_zip] ZIP 다운로드 요청: base_name={base_name}")
 
         zip_buffer = BytesIO()
+        pattern = re.compile(rf"^{re.escape(base_name)}_IMG_[0-9a-fA-F-]+$")
+        matched = False
 
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for file_id, img_bytes in memory_store.items():
+                if pattern.match(file_id):
+                    matched = True
+                    arcname = f"{file_id}.png"
+                    zip_file.writestr(arcname, img_bytes)
 
-            pattern = re.compile(rf"^{re.escape(base_name)}_\d+\.[A-Za-z]{{3,4}}$")
-            for file in os.listdir(SEGMENTS_DIR):
-                if pattern.match(file):
-                    full_path = os.path.join(SEGMENTS_DIR, file)
-                    if os.path.isfile(full_path):
-                        zip_file.write(full_path, arcname=file)
-
-        # 실제로 ZIP에 담긴 파일이 없으면 404
-        if zip_buffer.getbuffer().nbytes == 0:
+        if not matched:
             return jsonify({'error': '해당 베이스 이름의 파일이 없습니다.'}), 404
 
+        # ZIP 생성 완료
         zip_buffer.seek(0)
         zip_filename = f"{base_name}_images.zip"
 
@@ -322,7 +319,6 @@ def download_zip(filename: str):
 
     except Exception as e:
         logger.error(f"[download_zip] ZIP 파일 생성 중 에러: {e}")
-
         abort(500, description="내부 서버 오류입니다.")
 
 
@@ -370,16 +366,13 @@ def upload_pdf():
             # process_pdf 결과가 RGB라고 가정 → OpenCV 저장 위해 BGR 변환
             img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
 
-            memfile = BytesIO()
             success, encoded_img = cv2.imencode(".png", img_bgr)
-
             if success:
-                memfile.write(encoded_img.tobytes())
-                memfile.seek(0)
+                img_bytes = encoded_img.tobytes()
 
                 # 고유 식별자 생성 후 memory_store에 저장
-                file_id = str(uuid.uuid4())
-                memory_store[file_id] = memfile  # BytesIO 객체
+                file_id = base_filename + '_IMG_' + str(uuid.uuid4())
+                memory_store[file_id] = img_bytes
 
                 #  Flask URL 생성
                 download_url = url_for('download_from_memory', filename=file_id, _external=True)
