@@ -13,6 +13,7 @@
 </head>
 <body>
 <div class="container mt-5">
+
     <h1 class="text-center">PDF Image Extractor</h1>
     <p class="text-center">Upload a PDF to extract figures and tables as images.</p>
 
@@ -21,6 +22,14 @@
         <form id="uploadForm">
             <div class="mb-3">
                 <label for="pdfFile" class="form-label">Choose PDF File</label>
+                <br>
+                <br>
+                <label>
+                    <input type="radio" name="pdf_type" value="normal" checked> PDF
+                </label>
+                <label>
+                    <input type="radio" name="pdf_type" value="academic"> academic PDF
+                </label>
                 <input type="file" class="form-control" id="pdfFile" name="file" accept="application/pdf" required>
             </div>
             <button type="submit" class="btn btn-primary">Upload and Extract</button>

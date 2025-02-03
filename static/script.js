@@ -1,5 +1,12 @@
 $(document).ready(function () {
     $('#uploadForm').on('submit', function (event) {
+        const pdfType = $('[name="pdf_type"]:checked').val();
+        let url = ""
+        if (pdfType === 'normal') {
+            url = '/upload_normal';
+        } else {
+            url = '/upload_academic';
+        }
         $('#results').hide();
         $('#imageContainer').empty();
         $('#LoadingDiv').show();
@@ -8,7 +15,7 @@ $(document).ready(function () {
 
         // Upload PDF via Ajax
         $.ajax({
-            url: '/upload',
+            url: url,
             type: 'POST',
             data: formData,
             processData: false,
